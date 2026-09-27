@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.janus.nightly</string>
+  <key>ProgramArguments</key><array>
+    <string>/bin/zsh</string><string>-lc</string>
+    <string>cd __JANUS_ROOT__ && caffeinate -i __JANUS_BIN__/janus nightly</string>
+  </array>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>30</integer></dict>
+  <key>StandardOutPath</key><string>__HOME__/Library/Logs/janus/nightly.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/Library/Logs/janus/nightly.err.log</string>
+  <key>EnvironmentVariables</key><dict><key>PYTORCH_ENABLE_MPS_FALLBACK</key><string>1</string></dict>
+</dict></plist>

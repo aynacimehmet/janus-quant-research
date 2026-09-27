@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "janus"
+version = "0.1.1"
+description = "JANUS — kişisel EOD portföy karar sistemi (TEFAS / ABD / BES)"
+requires-python = ">=3.12"
+dependencies = [
+  "pandas>=2.2", "numpy>=2.0", "polars>=1.0", "duckdb>=1.1", "pyarrow>=17",
+  "borsapy", "requests>=2.32", "pyyaml>=6", "pydantic-settings>=2.4",
+  "typer>=0.12", "loguru>=0.7", "pandera>=0.21", "scipy>=1.14", "scikit-learn>=1.5",
+  "statsmodels>=0.14", "lightgbm>=4.5", "mlflow>=2.16", "quantstats>=0.0.64",
+]
+
+[project.optional-dependencies]
+ml = ["torch>=2.5", "gymnasium>=1.0", "catboost>=1.2", "hmmlearn>=0.3", "jumpmodels", "mapie>=1.0"]
+us = ["yfinance>=0.2", "alpaca-py>=0.30"]
+dev = ["pytest>=8", "ruff>=0.6", "pre-commit>=3.8", "detect-secrets>=1.5", "jupyter"]
+
+[project.scripts]
+janus = "janus.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "PD"]
+ignore = ["E501", "PD901", "PD101", "PD010", "PD013", "UP036"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

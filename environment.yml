@@ -1,0 +1,9 @@
+name: janus
+channels: [conda-forge]
+dependencies:
+  - python=3.13
+  - llvm-openmp
+  - coreutils
+  - pip
+  - pip:
+      - -e .[dev]

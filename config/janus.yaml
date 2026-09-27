@@ -1,0 +1,186 @@
+# JANUS konfigürasyonu v0.2.1 — onaylı kararlar (21.09.2026) + S1 ingest ayarları. Sırlar burada DEĞİL (.env).
+project:
+  sprint: "S3b"
+  timezone: "Europe/Istanbul"
+  order_window: {start: "09:30", end: "12:00"}
+  runs: {nightly: "23:30", morning: "09:15"}
+
+store:
+  path: data/janus.duckdb
+  parquet_dir: data/curated
+
+ingest:
+  fund_types: ["YAT", "EMK"]          # Faz-1; BES için ["YAT", "EMK"]
+  initial_period: "5y"         # borsapy azami
+  incremental_period: "1mo"    # gece artımlı; upsert idempotent
+  sleep_seconds: 0.15          # fon başına bekleme (ilk yükleme 0,25 ile 26 dk sürdü)
+  retries: 3
+  workers: 1                   # 2–3 ile gece koşusu ~3× hızlanır; TEFAS engellemesi görülürse 1'e dönün
+  retry_failed_info_weekday: 6 # kalıcı profil hatalı fonlar yalnızca Pazar yeniden denenir; diğer günler son profil taşınır
+
+macro:                         # EVDS + TCMB; PIT için release_lag_days (available_from = date + lag)
+  policy_rate_evds_code: "TP.BISPOLFAIZ.TUR"   # yalnızca REST yedeğinde kullanılır; `janus evds-search "politika faizi"` ile doğrulayın
+  series:
+    - {name: usdtry,      source: evds,        code: "TP.DK.USD.A", frequency: daily,   period: "5y", release_lag_days: 0}
+    - {name: eurtry,      source: evds,        code: "TP.DK.EUR.A", frequency: daily,   period: "5y", release_lag_days: 0}
+    - {name: cpi_index,   source: evds,        code: "TP.FG.J0",    frequency: monthly, period: "5y", release_lag_days: 35}
+    - {name: policy_rate, source: tcmb_policy, period: "max", release_lag_days: 0}
+
+reporting:
+  absolute_amounts: false      # karar #10: yalnızca yüzde
+  channel: telegram
+  orders_dir: reports
+
+paper:
+  min_hold_days: 21
+  kpi:
+    nightly_success_min: 0.95    # gece koşusu başarı oranı eşiği
+    morning_deadline: "09:30"    # sabah mesajı saat sınırı
+    reconcile_max_pp: 0.5        # mutabakat max ağırlık farkı (pp)
+    identity_tol: 1.0e-6         # defter özdeşlik toleransı
+
+legs:
+  tefas:
+    enabled: true
+    currency: TRY
+    independent: true          # karar #7
+    cash_proxy: money_market_fund
+    universe:                  # Faz-1 (karar #12, ADR-14)
+      fund_type: YAT
+      exclude_umbrella_patterns: ["serbest"]      # şemsiye türü VEYA kategori içinde geçerse dışarı
+      exclude_status_patterns: ["görmüyor", "kapal"] # doğrulandı 22.09: "TEFAS'ta İşlem Görmüyor" (1054), "Fon Alımına Kapalı, Fon Bozumuna Kapalı" (120), "…Bozumuna Açık" (9)
+      founder_blacklist:       # SPK 2026/60 (17.09.2026); kurucu/yönetici/fon adı eşleşmesi. Kodlar: HFP, PA1, ALA, BLP, PSP, SKP, CP1
+        - "Kuzey Portföy"
+        - "Polaris Portföy"
+        - "Doruk Portföy"
+        - "Okyanus Portföy"
+        - "Alfa Capital Portföy"   # TEFAS'ta "ALFA CAPİTAL PORTFÖY" (CP1); Türkçe İ için tr_fold
+        - "Pars Portföy"
+        - "Boğa Portföy"
+      founder_whitelist: []
+      min_age_days: 365        # yaş = bugün − ilk NAV tarihi (5y geçmişle alt sınır)
+      max_stale_days: 2
+      source_stale_days: 2  # tüm kaynak beklenenden ≥ 2 iş günü eskiyse emir üretilmez (D04)
+      min_universe_fresh_ratio: 0.95
+    constraints:
+      max_weight_per_fund: 0.25
+      max_weight_per_founder: 0.30
+      max_funds_per_founder: 3
+      max_funds_per_hrp_cluster: 3
+      pilot_risky_ceiling: 0.30
+      target_holdings: {min: 8, max: 15}
+    rebalance:
+      schedule: monthly_first_business_day
+      drift_threshold: 0.03
+      drift_threshold_taxable_sale: 0.06
+    risk:
+      dd_trigger_medium: 0.12
+      dd_exposure: 0.65
+      dd_trigger_low: null
+      exposure_levels: {low: 0.30, medium: 0.65, full: 1.00}
+      suspension_haircut: 0.30
+    execution:
+      buy_fill: same_day_nav
+      signal_lag_days: 1
+      sell_valor_source: fund_master
+    tax:
+      withholding_source: borsapy
+      lot_method: FIFO
+      withholding_schedule: []    # P04 yedek/ayna: [{from: "YYYY-MM-DD", rates: {kategori: oran, default: oran}}]; S3b-5'te borsapy'den doldurulur
+
+  us:
+    enabled: false
+    currency: USD
+    independent: true
+    universe: {index: "S&P 500", point_in_time: true}
+    constraints: {max_weight_per_name: 0.25, cash_floor: 500}
+    costs: {per_order_usd: 1.5, slippage_bps: 5, dividend_withholding: null}
+    tax: {us_cgt_rate: 0.0}
+    rebalance: {schedule: monthly_first_business_day, drift_threshold: 0.03}
+    risk: {dd_trigger_medium: 0.12}
+
+  bes:
+    enabled: false
+    currency: TRY
+    independent: true
+    accounts: ["Marmara Hayat Emeklilik", "Ege Emeklilik"]
+    universe:
+      platform: BEFAS
+      fund_type: EMK
+      exclude_state_contribution_patterns: ["devlet katkı"]
+      founder_blacklist: []      # TEFAS kara listesiyle aynı; kodda uygulanır
+      min_age_days: 365
+      max_stale_days: 2
+    exclude_umbrella_patterns: ["oks", "standart", "başlangıç", "devlet katkı", "katılım katkı"]
+    constraints:
+      max_weight_per_fund: 0.25
+      max_weight_per_founder: 0.30
+      max_funds_per_change: 20
+    plan:
+      year_basis: calendar
+      planned: 10
+      reserve: 2
+      legal_max: 12
+    execution:
+      default_buy_valor: 1
+      default_sell_valor: 2
+      valor_assumption_id: A8
+    tax:
+      switch_tax: 0.0
+
+backtest:
+  initial_capital: 100           # birim; raporlar yüzde
+  warmup_days: 252               # ilk sinyal için gereken geçmiş
+  cash_tax_rate: 0.175           # nakit vekili (para piyasası fonu) getirisinin stopajı
+  top_n: 10
+
+hrp:
+  cov_days: 126                # Ledoit-Wolf kovaryans penceresi
+  linkage: single              # single (klasik HRP) | ward (S5'te A/B)
+  cluster_distance: 0.4        # sqrt(0.5(1-ρ)) eşiği: 0.4 ≈ ρ ≥ 0.68 aynı küme
+  buffer_mult: 2.0             # elde tutulan fon sıralamada ≤ 2N ise tutulur
+  tax_aware: true              # skor × (1 − stopaj)
+  refresh_every: 3             # B2b/B3: seçim + HRP her 3 rebalance'ta (çeyreklik) yeniden; ara aylarda hedef sabit
+  smooth_lambda: 0.5           # hedef ağırlık EWMA (turnover azaltır)
+
+regime:                        # S3a kapı adayları (R1 jump/HMM, R2 makas)
+  k: 3
+  jump_penalty: 50.0           # jump model durum değişimi cezası (standardize özelliklerde)
+  refit_every: 1               # her rebalance'ta D-1'e kadar yeniden tahmin (anchored)
+  hmm: true                    # hmmlearn kuruluysa R1-HMM de koşar
+  spread_window: 63
+  spread_margin: 0.02
+  features: [eq_trend63, eq_trend252, eq_vol21, eq_vol63, breadth200, n_suspended, policy_rate, d_policy_63, cpi_yoy, real_rate, usdtry_ret63, usdtry_vol21]
+
+sweep_hrp:                     # B2b taraması
+  n: [5, 10, 15]
+  smooth_lambda: [0.3, 0.5, 0.7]
+  refresh_every: [3, 6]
+
+sweep:                         # B1 parametre taraması (PBO/deflated Sharpe için); schedule → BacktestConfig
+  n: [5, 10, 15]
+  lookback: [126, 252]
+  buffer_mult: [2.0]
+  schedule: [monthly_first_business_day, quarterly_first_business_day]
+
+conformal:                     # S3b-3 (TEMPORAL §6); gamma tasarım varsayılanı, kanıtlanmış değer DEĞİL
+  gamma: 0.05
+  alpha_init: target           # alpha_0 = miscoverage_target (seçim 0.20 / risk 0.10'dan başlar)
+  alpha_min: 0.02
+  alpha_max: 0.50
+  n_min: 200
+  calib_window: 126
+  fdr_q: 0.20                 # S3b-5-2: BH FDR seviyesi (B2c-fdr seçimi; varsayılan değişmez)
+  fdr_q_grid: [0.10, 0.20, 0.30]  # S3b-5-3: önceden kayıtlı q ızgarası (rapor satırları; tarama kanıtı değildir)
+
+validation:
+  walk_forward: {test_months: 3, purge_days: 21, embargo_days: 5, anchored: true}
+  cpcv: {n_blocks: 6, n_test: 2}
+  seeds: 5
+  start_dates: 12
+  require_deflated_sharpe: true
+  stress: {suspension: {months: 6, haircut: 0.30}, extra_fee_bps: 10, valor_plus_days: 1}
+
+calendar:
+  nav_publish_time: "10:00"    # TEFAS günün etiketini bu saatten sonra yayımlar varsayımı (A1-rev; ilk gerçek koşularla kalibre edilecek)
+  holidays: ["2026-10-29", "2027-01-01"]   # BIST resmî tatilleri; dini bayramlar ve arife yarım günleri yıl başında eklenecek                 # BIST resmî tatilleri (YYYY-MM-DD); boşsa yalnızca hafta sonu — tatil ertesi yanlış 'kaynak eski' alarmı olabilir
