@@ -97,3 +97,8 @@ access.
 
 Released under the MIT License; see `LICENSE`. Third-party dependency
 licenses are listed in `THIRD_PARTY_NOTICES.md`.
+
+## Project Presentation
+
+- 🇬🇧 **English:** [View PDF](presentation/janus_project_overview_en.pdf)
+- 🇹🇷 **Türkçe:** [PDF'yi görüntüle](presentation/janus_project_overview_tr.pdf)

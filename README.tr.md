@@ -92,3 +92,8 @@ Tüm testler sentetik veriyle çalışır; piyasa verisi veya ağ erişimi gerek
 
 MIT Lisansı ile yayımlanır; bkz. `LICENSE`. Üçüncü taraf bağımlılık lisansları
 `THIRD_PARTY_NOTICES.md` içinde listelenmiştir.
+
+## Proje Sunumu
+
+- 🇹🇷 **Türkçe:** [PDF'yi görüntüle](presentation/janus_project_overview_tr.pdf)
+- 🇬🇧 **English:** [View PDF](presentation/janus_project_overview_en.pdf)
